@@ -45,5 +45,5 @@ jobs:
     - name: Upload binary as artifact
       uses: actions/upload-artifact@v3
       with:
-        name: todo-app-binary
+        name: todo
         path: target/release/todo
