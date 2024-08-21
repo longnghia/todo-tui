@@ -1,4 +1,4 @@
-name: Build and Upload
+name: CI
 
 on:
   push:
@@ -20,6 +20,24 @@ jobs:
       uses: actions/setup-rust@v1
       with:
         rust-version: '1.70.0'
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Cache Cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build-
 
     - name: Build the project
       run: cargo build --release
