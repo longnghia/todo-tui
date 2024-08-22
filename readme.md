@@ -14,6 +14,7 @@ __🤖 This project is created by ChatGPT 🤖__
 - Add new tasks with `o`.
 - Filter tasks with `/` and use `n` and `N` to navigate through results.
 - Backup tasks with `b`.
+- Reset tasks with `r`.
 
 ## Building and Installing
 

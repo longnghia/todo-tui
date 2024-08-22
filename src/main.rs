@@ -118,7 +118,7 @@ fn ui<B: Backend>(
             [
                 Constraint::Min(5),    // Area for tasks list
                 Constraint::Length(3), // Area for input at the bottom
-                Constraint::Length(1), // Status message at the bottom
+                Constraint::Length(3), // Status message at the bottom
             ]
             .as_ref(),
         )
@@ -214,6 +214,7 @@ fn main() -> Result<(), io::Error> {
     let mut input_mode = InputMode::View;
     let mut status_message: Option<String> = None; // Temporary status message
     let mut message_time: Option<Instant> = None; // Time when message is shown
+    let mut reset_dialog = false;
     let mut list_state = ListState::default();
     list_state.select(Some(current_index));
 
@@ -261,6 +262,11 @@ fn main() -> Result<(), io::Error> {
                             status_message = Some("Backup failed.".to_string());
                         }
                         message_time = Some(Instant::now()); // Start the 3-second timer
+                    }
+                    KeyCode::Char('r') => {
+                        reset_dialog = true;
+                        status_message = Some("Press 'y' to confirm reset, 'n' to cancel.".to_string());
+                        message_time = Some(Instant::now());  // Show status message
                     }
                     KeyCode::Char('j') if matches!(input_mode, InputMode::View) => {
                         let tasks_filtered_len = app.filter_tasks(&filter).len();
@@ -359,6 +365,31 @@ fn main() -> Result<(), io::Error> {
                         input.clear();
                     }
                     _ => {}
+                }
+                if reset_dialog {
+                    match key.code {
+                        KeyCode::Char('y') => {
+                            let current_date = Local::now().format("%Y-%m-%d").to_string();
+                            let backup_file_name = format!("todo.{}.json", current_date);
+                            let backup_file_path = todo_file_path.with_file_name(backup_file_name);
+                            if fs::copy(&todo_file_path, backup_file_path).is_ok() {
+                                fs::write(&todo_file_path, "[]").expect("Unable to clear todo file");
+                                status_message = Some("Backup created and todo list reset.".to_string());
+                            } else {
+                                status_message = Some("Backup failed. Reset canceled.".to_string());
+                            }
+                
+                            message_time = Some(Instant::now());
+                            reset_dialog = false;
+                        }
+                        KeyCode::Char('n') => {
+                            // Cancel the reset process
+                            status_message = Some("Reset canceled.".to_string());
+                            message_time = Some(Instant::now());
+                            reset_dialog = false;
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
