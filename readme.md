@@ -12,7 +12,7 @@ __🤖 This project is created by ChatGPT 🤖__
 - Navigate through tasks with `jk`.
 - Toggle task status with `space`.
 - Add new tasks with `o`.
-- Filter tasks with `/` and use `n` and `N` to navigate through results.
+- Filter tasks with `/`.
 - Backup tasks with `b`.
 - Reset tasks with `r`.
 
