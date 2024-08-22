@@ -70,6 +70,12 @@ impl TodoApp {
         self.tasks.insert(index, task);
     }
 
+    fn delete_task(&mut self, index: usize) {
+        if index < self.tasks.len() {
+            self.tasks.remove(index);
+        }
+    }
+
     fn edit_task(&mut self, index: usize, new_description: String) {
         if let Some(task) = self.tasks.get_mut(index) {
             task.description = new_description;
@@ -149,7 +155,7 @@ fn ui<B: Backend>(
         .collect();
 
     let tasks_list = List::new(tasks)
-        .block(Block::default().borders(Borders::ALL).title("Todo List"))
+        .block(Block::default().borders(Borders::ALL).title("Todo List (d: delete, Space: toggle)"))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
@@ -301,6 +307,24 @@ fn main() -> Result<(), io::Error> {
                         input_mode = InputMode::Add;
                         input.clear();
                     }
+                    KeyCode::Char('d') if matches!(input_mode, InputMode::View) => {
+                        let tasks_filtered = app.filter_tasks(&filter);
+                        if let Some(task) = tasks_filtered.get(current_index) {
+                            let original_index = app
+                                .tasks
+                                .iter()
+                                .position(|t| t.description == task.description)
+                                .unwrap();
+                            app.delete_task(original_index);
+                            app.save_to_file(&todo_file_path).unwrap();
+                            status_message = Some("Task deleted.".to_string());
+                            message_time = Some(Instant::now());
+                            if current_index >= tasks_filtered.len() - 1 && current_index > 0 {
+                                current_index -= 1;
+                            }
+                            list_state.select(Some(current_index));
+                        }
+                    },
                     KeyCode::Char('/') if matches!(input_mode, InputMode::View) => {
                         input_mode = InputMode::Filter;
                         input.clear();
@@ -378,7 +402,7 @@ fn main() -> Result<(), io::Error> {
                             } else {
                                 status_message = Some("Backup failed. Reset canceled.".to_string());
                             }
-                
+
                             message_time = Some(Instant::now());
                             reset_dialog = false;
                         }
