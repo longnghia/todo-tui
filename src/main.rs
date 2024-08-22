@@ -155,7 +155,11 @@ fn ui<B: Backend>(
         .collect();
 
     let tasks_list = List::new(tasks)
-        .block(Block::default().borders(Borders::ALL).title("Todo List (d: delete, Space: toggle)"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Todo List (d: delete, Space: toggle)"),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
@@ -246,8 +250,8 @@ fn main() -> Result<(), io::Error> {
 
         if event::poll(Duration::from_millis(200))? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => {
+                match (key.code, &input_mode) {
+                    (KeyCode::Char('q'), InputMode::View) => {
                         // Clear the terminal and exit
                         execute!(
                             terminal.backend_mut(),
@@ -257,7 +261,7 @@ fn main() -> Result<(), io::Error> {
                         terminal.show_cursor()?;
                         return Ok(());
                     }
-                    KeyCode::Char('b') => {
+                    (KeyCode::Char('b'), InputMode::View) => {
                         let current_date = Local::now().format("%Y-%m-%d").to_string();
                         let backup_file_name = format!("todo.{}.json", current_date);
                         let backup_file_path = todo_file_path.with_file_name(backup_file_name);
@@ -269,45 +273,42 @@ fn main() -> Result<(), io::Error> {
                         }
                         message_time = Some(Instant::now()); // Start the 3-second timer
                     }
-                    KeyCode::Char('r') => {
+                    (KeyCode::Char('r'), InputMode::View) => {
                         reset_dialog = true;
-                        status_message = Some("Press 'y' to confirm reset, 'n' to cancel.".to_string());
-                        message_time = Some(Instant::now());  // Show status message
+                        status_message =
+                            Some("Press 'y' to confirm reset, 'n' to cancel.".to_string());
+                        message_time = Some(Instant::now()); // Show status message
                     }
-                    KeyCode::Char('j') if matches!(input_mode, InputMode::View) => {
+                    (KeyCode::Char('j'), InputMode::View) => {
                         let tasks_filtered_len = app.filter_tasks(&filter).len();
                         if current_index + 1 < tasks_filtered_len {
                             current_index += 1;
                             list_state.select(Some(current_index));
                         }
                     }
-                    KeyCode::Char('k') if matches!(input_mode, InputMode::View) => {
+                    (KeyCode::Char('k'), InputMode::View) => {
                         if current_index > 0 {
                             current_index -= 1;
                             list_state.select(Some(current_index));
                         }
                     }
-                    KeyCode::Char(' ') => {
-                        if let InputMode::View = input_mode {
-                            let tasks_filtered = app.filter_tasks(&filter);
-                            if let Some(task) = tasks_filtered.get(current_index) {
-                                let original_index = app
-                                    .tasks
-                                    .iter()
-                                    .position(|t| t.description == task.description)
-                                    .unwrap();
-                                app.toggle_task(original_index);
-                                app.save_to_file(&todo_file_path);
-                            }
-                        } else {
-                            input.push(' ');
+                    (KeyCode::Char(' '), InputMode::View) => {
+                        let tasks_filtered = app.filter_tasks(&filter);
+                        if let Some(task) = tasks_filtered.get(current_index) {
+                            let original_index = app
+                                .tasks
+                                .iter()
+                                .position(|t| t.description == task.description)
+                                .unwrap();
+                            app.toggle_task(original_index);
+                            app.save_to_file(&todo_file_path);
                         }
                     }
-                    KeyCode::Char('o') if matches!(input_mode, InputMode::View) => {
+                    (KeyCode::Char('o'), InputMode::View) => {
                         input_mode = InputMode::Add;
                         input.clear();
                     }
-                    KeyCode::Char('d') if matches!(input_mode, InputMode::View) => {
+                    (KeyCode::Char('d'), InputMode::View) => {
                         let tasks_filtered = app.filter_tasks(&filter);
                         if let Some(task) = tasks_filtered.get(current_index) {
                             let original_index = app
@@ -324,67 +325,54 @@ fn main() -> Result<(), io::Error> {
                             }
                             list_state.select(Some(current_index));
                         }
-                    },
-                    KeyCode::Char('/') if matches!(input_mode, InputMode::View) => {
+                    }
+                    (KeyCode::Char('/'), InputMode::View) => {
                         input_mode = InputMode::Filter;
                         input.clear();
                     }
-                    KeyCode::Char('i') if matches!(input_mode, InputMode::View) => {
+                    (KeyCode::Char('i'), InputMode::View) => {
                         input_mode = InputMode::Edit;
                         input.clear();
                         if let Some(task) = app.filter_tasks(&filter).get(current_index) {
                             input = task.description.clone();
                         }
                     }
-                    KeyCode::Enter => {
-                        match input_mode {
-                            InputMode::Add => {
-                                app.add_task(input.clone());
-                                app.save_to_file(&todo_file_path);
-                                input_mode = InputMode::View;
-                            }
-                            InputMode::Filter => {
-                                filter = input.clone();
-                                input_mode = InputMode::View;
-                            }
-                            InputMode::Edit => {
-                                let tasks_filtered = app.filter_tasks(&filter);
-                                if let Some(task) = tasks_filtered.get(current_index) {
-                                    let original_index = app
-                                        .tasks
-                                        .iter()
-                                        .position(|t| t.description == task.description)
-                                        .unwrap();
-                                    app.edit_task(original_index, input.clone());
-                                    app.save_to_file(&todo_file_path);
-                                    input_mode = InputMode::View;
-                                }
-                            }
-                            _ => {}
+                    (KeyCode::Enter, InputMode::Add) => {
+                        app.add_task(input.clone());
+                        app.save_to_file(&todo_file_path);
+                        input_mode = InputMode::View;
+                        input.clear();
+                    }
+                    (KeyCode::Enter, InputMode::Filter) => {
+                        filter = input.clone();
+                        input_mode = InputMode::View;
+                        input.clear();
+                    }
+                    (KeyCode::Enter, InputMode::Filter) => {
+                        let tasks_filtered = app.filter_tasks(&filter);
+                        if let Some(task) = tasks_filtered.get(current_index) {
+                            let original_index = app
+                                .tasks
+                                .iter()
+                                .position(|t| t.description == task.description)
+                                .unwrap();
+                            app.edit_task(original_index, input.clone());
+                            app.save_to_file(&todo_file_path);
+                            input_mode = InputMode::View;
                         }
                         input.clear();
                     }
-                    KeyCode::Char(c)
-                        if matches!(
-                            input_mode,
-                            InputMode::Add | InputMode::Filter | InputMode::Edit
-                        ) =>
-                    {
+                    (KeyCode::Char(c), InputMode::Add | InputMode::Filter | InputMode::Edit) => {
                         input.push(c);
                     }
-                    KeyCode::Backspace
-                        if matches!(
-                            input_mode,
-                            InputMode::Add | InputMode::Filter | InputMode::Edit
-                        ) =>
-                    {
+                    (KeyCode::Backspace, InputMode::Add | InputMode::Filter | InputMode::Edit) => {
                         input.pop();
                     }
-                    KeyCode::Esc => {
+                    (KeyCode::Esc, _) => {
                         input.clear();
                         input_mode = InputMode::View;
                     }
-                    KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
+                    (KeyCode::Char('c'), _) if key.modifiers == KeyModifiers::CONTROL => {
                         input_mode = InputMode::View;
                         input.clear();
                     }
@@ -397,8 +385,10 @@ fn main() -> Result<(), io::Error> {
                             let backup_file_name = format!("todo.{}.json", current_date);
                             let backup_file_path = todo_file_path.with_file_name(backup_file_name);
                             if fs::copy(&todo_file_path, backup_file_path).is_ok() {
-                                fs::write(&todo_file_path, "[]").expect("Unable to clear todo file");
-                                status_message = Some("Backup created and todo list reset.".to_string());
+                                fs::write(&todo_file_path, "[]")
+                                    .expect("Unable to clear todo file");
+                                status_message =
+                                    Some("Backup created and todo list reset.".to_string());
                             } else {
                                 status_message = Some("Backup failed. Reset canceled.".to_string());
                             }
