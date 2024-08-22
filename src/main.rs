@@ -130,6 +130,13 @@ fn ui<B: Backend>(
         )
         .split(f.size());
 
+    // Determine text color based on terminal background
+    let text_color = if crossterm::terminal::size().map(|s| s.1).unwrap_or(0) % 2 == 0 {
+        Color::Black
+    } else {
+        Color::White
+    };
+
     // Render tasks list
     let tasks: Vec<ListItem> = app
         .filter_tasks(filter)
@@ -140,7 +147,7 @@ fn ui<B: Backend>(
                     .fg(Color::Green)
                     .add_modifier(Modifier::CROSSED_OUT)
             } else {
-                Style::default().fg(Color::Black)
+                Style::default().fg(text_color)
             };
             let content = Spans::from(vec![Span::styled(
                 format!(
