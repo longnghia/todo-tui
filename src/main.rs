@@ -69,12 +69,15 @@ impl TodoApp {
             status: TaskStatus::Undone,
             created_at: Some(Local::now()),
         };
-        let index = self
+
+        let insert_index = self
             .tasks
             .iter()
-            .position(|t| t.status == TaskStatus::Done)
-            .unwrap_or(self.tasks.len());
-        self.tasks.insert(index, task);
+            .rposition(|t| t.status == TaskStatus::Undone)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        self.tasks.insert(insert_index, task);
     }
 
     fn delete_task(&mut self, index: usize) {
@@ -411,13 +414,44 @@ fn main() -> Result<(), io::Error> {
                         }
                     }
                     (KeyCode::Enter, InputMode::Add) => {
-                        app.add_task(input.clone());
-                        app.save_to_file(&todo_file_path);
-                        input_mode = InputMode::View;
-                        input.clear();
-                    }
-                    (KeyCode::Enter, InputMode::Filter) => {
-                        filter = input.clone();
+                        let tasks_filtered = app.filter_tasks(&filter);
+                        let insert_after_undone =
+                            if let Some(current_task) = tasks_filtered.get(current_index) {
+                                current_task.status == TaskStatus::Done
+                                    || current_task.status == TaskStatus::Pending
+                            } else {
+                                true
+                            };
+
+                        if insert_after_undone {
+                            app.add_task(input.clone());
+                        } else {
+                            // Find the index of the current task in the unfiltered list
+                            if let Some(current_task) = tasks_filtered.get(current_index) {
+                                if let Some(original_index) = app
+                                    .tasks
+                                    .iter()
+                                    .position(|t| t.description == current_task.description)
+                                {
+                                    // Insert the new task right after the current task
+                                    app.tasks.insert(
+                                        original_index + 1,
+                                        Task {
+                                            description: input.clone(),
+                                            status: TaskStatus::Undone,
+                                            created_at: Some(Local::now()),
+                                        },
+                                    );
+                                } else {
+                                    app.add_task(input.clone());
+                                }
+                            } else {
+                                app.add_task(input.clone());
+                            }
+                        }
+
+                        app.reorder_tasks();
+                        app.save_to_file(&todo_file_path).unwrap();
                         input_mode = InputMode::View;
                         input.clear();
                     }
