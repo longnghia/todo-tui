@@ -23,10 +23,17 @@ use tui::{
     Frame, Terminal,
 };
 
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+enum TaskStatus {
+    Undone,
+    Pending,
+    Done,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 struct Task {
     description: String,
-    done: bool,
+    status: TaskStatus,
     created_at: Option<DateTime<Local>>,
 }
 
@@ -59,13 +66,13 @@ impl TodoApp {
     fn add_task(&mut self, description: String) {
         let task = Task {
             description,
-            done: false,
+            status: TaskStatus::Undone,
             created_at: Some(Local::now()),
         };
         let index = self
             .tasks
             .iter()
-            .position(|t| t.done)
+            .position(|t| t.status == TaskStatus::Done)
             .unwrap_or(self.tasks.len());
         self.tasks.insert(index, task);
     }
@@ -77,7 +84,7 @@ impl TodoApp {
     }
 
     fn remove_done_tasks(&mut self) {
-        self.tasks.retain(|task| !task.done);
+        self.tasks.retain(|task| task.status != TaskStatus::Done);
     }
 
     fn edit_task(&mut self, index: usize, new_description: String) {
@@ -88,13 +95,32 @@ impl TodoApp {
 
     fn toggle_task(&mut self, index: usize) {
         if let Some(task) = self.tasks.get_mut(index) {
-            task.done = !task.done;
+            task.status = match task.status {
+                TaskStatus::Undone => TaskStatus::Done,
+                TaskStatus::Pending => TaskStatus::Undone,
+                TaskStatus::Done => TaskStatus::Undone,
+            };
+            self.reorder_tasks();
+        }
+    }
+
+    fn toggle_pending(&mut self, index: usize) {
+        if let Some(task) = self.tasks.get_mut(index) {
+            task.status = match task.status {
+                TaskStatus::Undone => TaskStatus::Pending,
+                TaskStatus::Pending => TaskStatus::Undone,
+                TaskStatus::Done => TaskStatus::Pending,
+            };
             self.reorder_tasks();
         }
     }
 
     fn reorder_tasks(&mut self) {
-        self.tasks.sort_by_key(|t| t.done);
+        self.tasks.sort_by_key(|t| match t.status {
+            TaskStatus::Undone => 0,
+            TaskStatus::Pending => 1,
+            TaskStatus::Done => 2,
+        });
     }
 
     fn filter_tasks(&self, query: &str) -> Vec<Task> {
@@ -109,7 +135,11 @@ impl TodoApp {
         if self.tasks.is_empty() {
             0.0
         } else {
-            let completed = self.tasks.iter().filter(|t| t.done).count();
+            let completed = self
+                .tasks
+                .iter()
+                .filter(|t| t.status == TaskStatus::Done)
+                .count();
             (completed as f32 / self.tasks.len() as f32) * 100.0
         }
     }
@@ -155,19 +185,18 @@ fn ui<B: Backend>(
         .filter_tasks(filter)
         .iter()
         .map(|task| {
-            let style = if task.done {
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::CROSSED_OUT)
-            } else {
-                Style::default().fg(text_color)
+            let (symbol, style) = match task.status {
+                TaskStatus::Undone => ("[ ]", Style::default().fg(text_color)),
+                TaskStatus::Pending => ("[-]", Style::default().fg(Color::Yellow)),
+                TaskStatus::Done => (
+                    "[x]",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::CROSSED_OUT),
+                ),
             };
             let content = Spans::from(vec![Span::styled(
-                format!(
-                    "{} {}",
-                    if task.done { "[x]" } else { "[ ]" },
-                    task.description
-                ),
+                format!("{} {}", symbol, task.description),
                 style,
             )]);
             ListItem::new(content)
@@ -325,6 +354,18 @@ fn main() -> Result<(), io::Error> {
                                 .position(|t| t.description == task.description)
                                 .unwrap();
                             app.toggle_task(original_index);
+                            app.save_to_file(&todo_file_path);
+                        }
+                    }
+                    (KeyCode::Char('-'), InputMode::View) => {
+                        let tasks_filtered = app.filter_tasks(&filter);
+                        if let Some(task) = tasks_filtered.get(current_index) {
+                            let original_index = app
+                                .tasks
+                                .iter()
+                                .position(|t| t.description == task.description)
+                                .unwrap();
+                            app.toggle_pending(original_index);
                             app.save_to_file(&todo_file_path);
                         }
                     }
