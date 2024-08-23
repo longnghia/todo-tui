@@ -63,21 +63,39 @@ impl TodoApp {
         Ok(())
     }
 
-    fn add_task(&mut self, description: String) {
+    fn add_task(
+        &mut self,
+        description: String,
+        current_status: Option<TaskStatus>,
+        current_index: Option<usize>,
+    ) {
+        let status = match current_status {
+            Some(TaskStatus::Pending) => TaskStatus::Pending,
+            _ => TaskStatus::Undone,
+        };
+
         let task = Task {
             description,
-            status: TaskStatus::Undone,
+            status,
             created_at: Some(Local::now()),
         };
 
-        let insert_index = self
-            .tasks
-            .iter()
-            .rposition(|t| t.status == TaskStatus::Undone)
-            .map(|i| i + 1)
-            .unwrap_or(0);
-
-        self.tasks.insert(insert_index, task);
+        match (current_status, current_index) {
+            (Some(TaskStatus::Pending | TaskStatus::Undone), Some(index)) => {
+                // Insert the new task right after the current pending task
+                self.tasks.insert(index + 1, task);
+            }
+            _ => {
+                // Insert at the end of undone tasks or at the beginning if there are none
+                let insert_index = self
+                    .tasks
+                    .iter()
+                    .rposition(|t| t.status == TaskStatus::Undone)
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                self.tasks.insert(insert_index, task);
+            }
+        }
     }
 
     fn delete_task(&mut self, index: usize) {
@@ -415,41 +433,19 @@ fn main() -> Result<(), io::Error> {
                     }
                     (KeyCode::Enter, InputMode::Add) => {
                         let tasks_filtered = app.filter_tasks(&filter);
-                        let insert_after_undone =
+                        let (current_status, current_index) =
                             if let Some(current_task) = tasks_filtered.get(current_index) {
-                                current_task.status == TaskStatus::Done
-                                    || current_task.status == TaskStatus::Pending
-                            } else {
-                                true
-                            };
-
-                        if insert_after_undone {
-                            app.add_task(input.clone());
-                        } else {
-                            // Find the index of the current task in the unfiltered list
-                            if let Some(current_task) = tasks_filtered.get(current_index) {
-                                if let Some(original_index) = app
+                                let original_index = app
                                     .tasks
                                     .iter()
                                     .position(|t| t.description == current_task.description)
-                                {
-                                    // Insert the new task right after the current task
-                                    app.tasks.insert(
-                                        original_index + 1,
-                                        Task {
-                                            description: input.clone(),
-                                            status: TaskStatus::Undone,
-                                            created_at: Some(Local::now()),
-                                        },
-                                    );
-                                } else {
-                                    app.add_task(input.clone());
-                                }
+                                    .unwrap();
+                                (Some(current_task.status.clone()), Some(original_index))
                             } else {
-                                app.add_task(input.clone());
-                            }
-                        }
+                                (None, None)
+                            };
 
+                        app.add_task(input.clone(), current_status, current_index);
                         app.reorder_tasks();
                         app.save_to_file(&todo_file_path).unwrap();
                         input_mode = InputMode::View;
