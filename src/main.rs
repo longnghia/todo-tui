@@ -104,6 +104,15 @@ impl TodoApp {
             .cloned()
             .collect()
     }
+
+    fn completion_percentage(&self) -> f32 {
+        if self.tasks.is_empty() {
+            0.0
+        } else {
+            let completed = self.tasks.iter().filter(|t| t.done).count();
+            (completed as f32 / self.tasks.len() as f32) * 100.0
+        }
+    }
 }
 
 enum InputMode {
@@ -165,12 +174,16 @@ fn ui<B: Backend>(
         })
         .collect();
 
+    let completion_percentage = app.completion_percentage();
+    let title = format!(
+        "Todo List (d: delete, D: remove done, Space: toggle) {:.1}% Complete",
+        completion_percentage
+    );
     let tasks_list = List::new(tasks)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Todo List (d: delete, D: remove done, Space: toggle)"),
-        )
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            title,
+            Style::default().add_modifier(Modifier::BOLD),
+        )))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
