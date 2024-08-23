@@ -455,7 +455,7 @@ fn main() -> Result<(), io::Error> {
                         input_mode = InputMode::View;
                         input.clear();
                     }
-                    (KeyCode::Enter, InputMode::Filter) => {
+                    (KeyCode::Enter, InputMode::Edit) => {
                         let tasks_filtered = app.filter_tasks(&filter);
                         if let Some(task) = tasks_filtered.get(current_index) {
                             let original_index = app
@@ -468,6 +468,10 @@ fn main() -> Result<(), io::Error> {
                             input_mode = InputMode::View;
                         }
                         input.clear();
+                    }
+                    (KeyCode::Enter, InputMode::Filter) => {
+                        filter = input.clone();
+                        input_mode = InputMode::View;
                     }
                     (KeyCode::Char(c), InputMode::Add | InputMode::Filter | InputMode::Edit) => {
                         input.push(c);
