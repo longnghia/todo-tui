@@ -76,6 +76,10 @@ impl TodoApp {
         }
     }
 
+    fn remove_done_tasks(&mut self) {
+        self.tasks.retain(|task| !task.done);
+    }
+
     fn edit_task(&mut self, index: usize, new_description: String) {
         if let Some(task) = self.tasks.get_mut(index) {
             task.description = new_description;
@@ -165,7 +169,7 @@ fn ui<B: Backend>(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Todo List (d: delete, Space: toggle)"),
+                .title("Todo List (d: delete, D: remove done, Space: toggle)"),
         )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
@@ -332,6 +336,14 @@ fn main() -> Result<(), io::Error> {
                             }
                             list_state.select(Some(current_index));
                         }
+                    }
+                    (KeyCode::Char('D'), InputMode::View) => {
+                        app.remove_done_tasks();
+                        app.save_to_file(&todo_file_path).unwrap();
+                        status_message = Some("Completed tasks removed.".to_string());
+                        message_time = Some(Instant::now());
+                        current_index = 0;
+                        list_state.select(Some(current_index));
                     }
                     (KeyCode::Char('/'), InputMode::View) => {
                         input_mode = InputMode::Filter;
