@@ -153,15 +153,22 @@ impl TodoApp {
     }
 
     fn completion_percentage(&self) -> f32 {
-        if self.tasks.is_empty() {
+        let done_count = self
+            .tasks
+            .iter()
+            .filter(|t| t.status == TaskStatus::Done)
+            .count();
+        let undone_count = self
+            .tasks
+            .iter()
+            .filter(|t| t.status == TaskStatus::Undone)
+            .count();
+        let total_count = done_count + undone_count;
+
+        if total_count == 0 {
             0.0
         } else {
-            let completed = self
-                .tasks
-                .iter()
-                .filter(|t| t.status == TaskStatus::Done)
-                .count();
-            (completed as f32 / self.tasks.len() as f32) * 100.0
+            (done_count as f32 / total_count as f32) * 100.0
         }
     }
 }
