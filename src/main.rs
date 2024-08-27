@@ -203,9 +203,9 @@ fn ui<B: Backend>(
 
     // Determine text color based on terminal background
     let text_color = if crossterm::terminal::size().map(|s| s.1).unwrap_or(0) % 2 == 0 {
-        Color::Black
-    } else {
         Color::White
+    } else {
+        Color::Black
     };
 
     // Render tasks list
