@@ -37,12 +37,10 @@ pub fn ui<B: Backend>(
         )
         .split(f.size());
 
-    // Determine text color based on terminal background
-    let text_color = if crossterm::terminal::size().map(|s| s.1).unwrap_or(0) % 2 == 0 {
-        Color::White
-    } else {
-        Color::Black
-    };
+    // Use a consistent color scheme
+    let undone_color = Color::Red;
+    let pending_color = Color::Yellow;
+    let done_color = Color::Green;
 
     // Render tasks list
     let tasks: Vec<ListItem> = app
@@ -50,12 +48,12 @@ pub fn ui<B: Backend>(
         .iter()
         .map(|task| {
             let (symbol, style) = match task.status {
-                TaskStatus::Undone => ("[ ]", Style::default().fg(text_color)),
-                TaskStatus::Pending => ("[-]", Style::default().fg(Color::Yellow)),
+                TaskStatus::Undone => ("[ ]", Style::default().fg(undone_color)),
+                TaskStatus::Pending => ("[-]", Style::default().fg(pending_color)),
                 TaskStatus::Done => (
                     "[x]",
                     Style::default()
-                        .fg(Color::Green)
+                        .fg(done_color)
                         .add_modifier(Modifier::CROSSED_OUT),
                 ),
             };
