@@ -35,32 +35,46 @@ impl TodoApp {
         current_status: Option<TaskStatus>,
         current_index: Option<usize>,
     ) {
-        let status = match current_status {
-            Some(TaskStatus::Pending) => TaskStatus::Pending,
-            _ => TaskStatus::Undone,
+        let tasks = if description.contains(": ") && description.contains("; ") {
+            let parts: Vec<&str> = description.splitn(2, ": ").collect();
+            if parts.len() == 2 {
+                let name = parts[0].trim();
+                let subtasks: Vec<String> = parts[1]
+                    .split(";")
+                    .map(|s| format!("{}: {}", name, s.trim()))
+                    .collect();
+                subtasks
+            } else {
+                vec![description]
+            }
+        } else {
+            vec![description]
         };
 
-        let task = Task {
-            description,
-            status,
-            created_at: Some(Local::now()),
+        let mut insert_index = match (&current_status, current_index) {
+            (Some(TaskStatus::Pending | TaskStatus::Undone), Some(index)) => index + 1,
+            _ => self
+                .tasks
+                .iter()
+                .rposition(|t| t.status == TaskStatus::Undone)
+                .map(|i| i + 1)
+                .unwrap_or(0),
         };
 
-        match (current_status, current_index) {
-            (Some(TaskStatus::Pending | TaskStatus::Undone), Some(index)) => {
-                // Insert the new task right after the current pending task
-                self.tasks.insert(index + 1, task);
-            }
-            _ => {
-                // Insert at the end of undone tasks or at the beginning if there are none
-                let insert_index = self
-                    .tasks
-                    .iter()
-                    .rposition(|t| t.status == TaskStatus::Undone)
-                    .map(|i| i + 1)
-                    .unwrap_or(0);
-                self.tasks.insert(insert_index, task);
-            }
+        for task_description in tasks {
+            let status = match current_status {
+                Some(TaskStatus::Pending) => TaskStatus::Pending,
+                _ => TaskStatus::Undone,
+            };
+
+            let task = Task {
+                description: task_description,
+                status,
+                created_at: Some(Local::now()),
+            };
+
+            self.tasks.insert(insert_index, task);
+            insert_index += 1;
         }
     }
 
