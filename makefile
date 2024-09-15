@@ -1,12 +1,12 @@
 BINARY_NAME := todo
-INSTALL_PATH := /usr/local/bin  
+INSTALL_PATH := /usr/local/bin
 
-all: build release install
+all: build install
+
+run:
+	cargo run
 
 build:
-	cargo build --release
-
-release:
 	@echo "Building release binary..."
 	cargo build --release
 

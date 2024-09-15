@@ -1,279 +1,28 @@
-use chrono::{DateTime, Local};
+mod app;
+mod task;
+mod ui;
+
+use app::TodoApp;
+use chrono::Local;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use serde::{Deserialize, Serialize};
-use std::env;
 use std::{
+    env,
     fs::{self, File},
-    io::{self, Write},
-    path::Path,
-    path::PathBuf,
-    time::Duration,
-    time::Instant,
+    io,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 use tui::{
-    backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame, Terminal,
+    backend::CrosstermBackend,
+    widgets::ListState,
+    Terminal,
 };
-
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
-enum TaskStatus {
-    Undone,
-    Pending,
-    Done,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct Task {
-    description: String,
-    status: TaskStatus,
-    created_at: Option<DateTime<Local>>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct TodoApp {
-    tasks: Vec<Task>,
-}
-
-impl TodoApp {
-    fn new() -> TodoApp {
-        TodoApp { tasks: vec![] }
-    }
-
-    fn load_from_file(filename: &Path) -> io::Result<TodoApp> {
-        if filename.exists() {
-            let content = fs::read_to_string(filename)?;
-            let tasks = serde_json::from_str(&content)?;
-            Ok(tasks)
-        } else {
-            Ok(TodoApp::new())
-        }
-    }
-
-    fn save_to_file(&self, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-        let data = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, data)?;
-        Ok(())
-    }
-
-    fn add_task(
-        &mut self,
-        description: String,
-        current_status: Option<TaskStatus>,
-        current_index: Option<usize>,
-    ) {
-        let status = match current_status {
-            Some(TaskStatus::Pending) => TaskStatus::Pending,
-            _ => TaskStatus::Undone,
-        };
-
-        let task = Task {
-            description,
-            status,
-            created_at: Some(Local::now()),
-        };
-
-        match (current_status, current_index) {
-            (Some(TaskStatus::Pending | TaskStatus::Undone), Some(index)) => {
-                // Insert the new task right after the current pending task
-                self.tasks.insert(index + 1, task);
-            }
-            _ => {
-                // Insert at the end of undone tasks or at the beginning if there are none
-                let insert_index = self
-                    .tasks
-                    .iter()
-                    .rposition(|t| t.status == TaskStatus::Undone)
-                    .map(|i| i + 1)
-                    .unwrap_or(0);
-                self.tasks.insert(insert_index, task);
-            }
-        }
-    }
-
-    fn delete_task(&mut self, index: usize) {
-        if index < self.tasks.len() {
-            self.tasks.remove(index);
-        }
-    }
-
-    fn remove_done_tasks(&mut self) {
-        self.tasks.retain(|task| task.status != TaskStatus::Done);
-    }
-
-    fn edit_task(&mut self, index: usize, new_description: String) {
-        if let Some(task) = self.tasks.get_mut(index) {
-            task.description = new_description;
-        }
-    }
-
-    fn toggle_task(&mut self, index: usize) {
-        if let Some(task) = self.tasks.get_mut(index) {
-            task.status = match task.status {
-                TaskStatus::Undone => TaskStatus::Done,
-                TaskStatus::Pending => TaskStatus::Undone,
-                TaskStatus::Done => TaskStatus::Undone,
-            };
-            self.reorder_tasks();
-        }
-    }
-
-    fn toggle_pending(&mut self, index: usize) {
-        if let Some(task) = self.tasks.get_mut(index) {
-            task.status = match task.status {
-                TaskStatus::Undone => TaskStatus::Pending,
-                TaskStatus::Pending => TaskStatus::Undone,
-                TaskStatus::Done => TaskStatus::Pending,
-            };
-            self.reorder_tasks();
-        }
-    }
-
-    fn reorder_tasks(&mut self) {
-        self.tasks.sort_by_key(|t| match t.status {
-            TaskStatus::Undone => 0,
-            TaskStatus::Pending => 1,
-            TaskStatus::Done => 2,
-        });
-    }
-
-    fn filter_tasks(&self, query: &str) -> Vec<Task> {
-        self.tasks
-            .iter()
-            .filter(|task| task.description.contains(query))
-            .cloned()
-            .collect()
-    }
-
-    fn completion_percentage(&self) -> f32 {
-        let done_count = self
-            .tasks
-            .iter()
-            .filter(|t| t.status == TaskStatus::Done)
-            .count();
-        let undone_count = self
-            .tasks
-            .iter()
-            .filter(|t| t.status == TaskStatus::Undone)
-            .count();
-        let total_count = done_count + undone_count;
-
-        if total_count == 0 {
-            0.0
-        } else {
-            (done_count as f32 / total_count as f32) * 100.0
-        }
-    }
-}
-
-enum InputMode {
-    View,
-    Add,
-    Edit,
-    Filter,
-}
-
-fn ui<B: Backend>(
-    f: &mut Frame<B>,
-    app: &TodoApp,
-    state: &mut ListState,
-    filter: &str,
-    input: &str,
-    input_mode: &InputMode,
-    status_message: &Option<String>,
-) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Min(5),    // Area for tasks list
-                Constraint::Length(3), // Area for input at the bottom
-                Constraint::Length(3), // Status message at the bottom
-            ]
-            .as_ref(),
-        )
-        .split(f.size());
-
-    // Determine text color based on terminal background
-    let text_color = if crossterm::terminal::size().map(|s| s.1).unwrap_or(0) % 2 == 0 {
-        Color::White
-    } else {
-        Color::Black
-    };
-
-    // Render tasks list
-    let tasks: Vec<ListItem> = app
-        .filter_tasks(filter)
-        .iter()
-        .map(|task| {
-            let (symbol, style) = match task.status {
-                TaskStatus::Undone => ("[ ]", Style::default().fg(text_color)),
-                TaskStatus::Pending => ("[-]", Style::default().fg(Color::Yellow)),
-                TaskStatus::Done => (
-                    "[x]",
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::CROSSED_OUT),
-                ),
-            };
-            let content = Spans::from(vec![Span::styled(
-                format!("{} {}", symbol, task.description),
-                style,
-            )]);
-            ListItem::new(content)
-        })
-        .collect();
-
-    let completion_percentage = app.completion_percentage();
-    let title = format!(
-        "Todo List (d: delete, D: remove done, Space: toggle) {:.1}% Complete",
-        completion_percentage
-    );
-    let tasks_list = List::new(tasks)
-        .block(Block::default().borders(Borders::ALL).title(Span::styled(
-            title,
-            Style::default().add_modifier(Modifier::BOLD),
-        )))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol("> ");
-
-    f.render_stateful_widget(tasks_list, chunks[0], state);
-
-    // Render input box at the bottom for adding a new task, editing, or filtering
-    let input_text = match input_mode {
-        InputMode::Add => format!("New Task: {}", input),
-        InputMode::Filter => format!("Filter: {}", input),
-        InputMode::Edit => format!("Edit Task: {}", input),
-        InputMode::View => "".to_string(),
-    };
-
-    let input_box = Paragraph::new(input_text)
-        .style(Style::default().fg(Color::Yellow))
-        .block(Block::default().borders(Borders::ALL).title("Input"));
-
-    f.render_widget(input_box, chunks[1]);
-
-    // Render the status message if it exists
-    if let Some(message) = status_message {
-        let status_widget = Paragraph::new(message.as_ref())
-            .style(Style::default().fg(Color::Green))
-            .block(Block::default().borders(Borders::ALL).title("Status"));
-
-        f.render_widget(status_widget, chunks[2]); // Render status message at the bottom
-    } else {
-        // Render an empty status message area when there is no message
-        let empty_status =
-            Paragraph::new("").block(Block::default().borders(Borders::ALL).title("Status"));
-        f.render_widget(empty_status, chunks[2]);
-    }
-}
+use ui::InputMode;
+use crate::ui::ui;
 
 fn get_todo_file_path() -> PathBuf {
     let home_dir = env::var("HOME").expect("Unable to get $HOME directory");
@@ -394,7 +143,7 @@ fn main() -> Result<(), io::Error> {
                                 .position(|t| t.description == task.description)
                                 .unwrap();
                             app.toggle_pending(original_index);
-                            app.save_to_file(&todo_file_path);
+                            let _ = app.save_to_file(&todo_file_path);
                         }
                     }
                     (KeyCode::Char('o'), InputMode::View) => {
@@ -410,7 +159,7 @@ fn main() -> Result<(), io::Error> {
                                 .position(|t| t.description == task.description)
                                 .unwrap();
                             app.delete_task(original_index);
-                            app.save_to_file(&todo_file_path).unwrap();
+                            let _ = app.save_to_file(&todo_file_path).unwrap();
                             status_message = Some("Task deleted.".to_string());
                             message_time = Some(Instant::now());
                             if current_index >= tasks_filtered.len() - 1 && current_index > 0 {
@@ -421,7 +170,7 @@ fn main() -> Result<(), io::Error> {
                     }
                     (KeyCode::Char('D'), InputMode::View) => {
                         app.remove_done_tasks();
-                        app.save_to_file(&todo_file_path).unwrap();
+                        let _ = app.save_to_file(&todo_file_path).unwrap();
                         status_message = Some("Completed tasks removed.".to_string());
                         message_time = Some(Instant::now());
                         current_index = 0;
@@ -454,7 +203,7 @@ fn main() -> Result<(), io::Error> {
 
                         app.add_task(input.clone(), current_status, current_index);
                         app.reorder_tasks();
-                        app.save_to_file(&todo_file_path).unwrap();
+                        let _ = app.save_to_file(&todo_file_path).unwrap();
                         input_mode = InputMode::View;
                         input.clear();
                     }
@@ -467,7 +216,7 @@ fn main() -> Result<(), io::Error> {
                                 .position(|t| t.description == task.description)
                                 .unwrap();
                             app.edit_task(original_index, input.clone());
-                            app.save_to_file(&todo_file_path);
+                            let _ = app.save_to_file(&todo_file_path);
                             input_mode = InputMode::View;
                         }
                         input.clear();
